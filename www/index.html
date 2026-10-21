@@ -3,27 +3,159 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Meu App</title>
+<title>Monitor</title>
 <style>
-body{font-family:sans-serif;margin:0;padding:20px;background:#111;color:#eee}
-input{width:65%;padding:10px;border-radius:8px;border:0}
-button{padding:10px 14px;border:0;border-radius:8px;background:#4caf50;color:#fff}
-ul{list-style:none;padding:0}
-li{padding:10px 0;border-bottom:1px solid #333}
+body{font-family:sans-serif;margin:0;padding:16px;background:#0d1117;color:#e6edf3}
+h1{font-size:20px;margin:0 0 12px}
+.card{background:#161b22;border-radius:12px;padding:14px;margin-bottom:12px}
+.big{font-size:32px;font-weight:bold}
+.lbl{font-size:13px;color:#8b949e}
+.ok{color:#3fb950}.med{color:#d29922}.ruim{color:#f85149}
+button{width:100%;padding:14px;border:0;border-radius:10px;background:#238636;color:#fff;font-size:16px}
+#status{font-size:20px;font-weight:bold}
 </style>
 </head>
 <body>
-<h1>Minhas tarefas</h1>
-<input id="t" placeholder="Nova tarefa">
-<button onclick="add()">Add</button>
-<ul id="l"></ul>
+<h1>Monitor de jogo</h1>
+<button id="btn" onclick="alternar()">Iniciar monitor</button>
+<div class="card" style="margin-top:12px">
+<div class="lbl">Estado geral</div>
+<div id="status">Parado</div>
+<div id="dica" class="lbl"></div>
+</div>
+<div class="card">
+<div class="lbl">Ping</div>
+<div class="big" id="ping">--</div>
+<div class="lbl" id="jit">Oscilação: -- | Perda: --</div>
+</div>
+<div class="card">
+<div class="lbl">Velocidade de download</div>
+<div class="big" id="vel">--</div>
+<button style="margin-top:10px" onclick="testarVel()">Testar velocidade</button>
+</div>
+<div class="card">
+<div class="lbl">Taxa de atualização da tela</div>
+<div class="big" id="hz">--</div>
+</div>
+<div class="card">
+<div class="lbl">Conexão</div>
+<div id="net">--</div>
+</div>
 <script>
-let tarefas = JSON.parse(localStorage.getItem('t') || '[]');
-function salvar(){ localStorage.setItem('t', JSON.stringify(tarefas)); mostrar(); }
-function add(){ const i = document.getElementById('t'); if(i.value.trim()){ tarefas.push(i.value.trim()); i.value=''; salvar(); } }
-function del(n){ tarefas.splice(n,1); salvar(); }
-function mostrar(){ document.getElementById('l').innerHTML = tarefas.map((x,n)=>'<li>'+x+' <button onclick="del('+n+')">x</button></li>').join(''); }
-mostrar();
+const $ = id => document.getElementById(id);
+let timer = null;
+let res = [];
+let ultimoEstado = '';
+
+async function medirPing(){
+  const t0 = performance.now();
+  try{
+    await fetch('https://www.gstatic.com/generate_204?' + Date.now(), {mode:'no-cors', cache:'no-store'});
+    res.push(Math.round(performance.now() - t0));
+  }catch(e){
+    res.push(null);
+  }
+  if(res.length > 20) res.shift();
+  atualizar();
+}
+
+function atualizar(){
+  const ok = res.filter(x => x !== null);
+  const perda = Math.round((res.length - ok.length) / res.length * 100);
+  if(!ok.length){
+    $('ping').textContent = 'sem conexão';
+    mostrar('ruim', 'Sem conexão', 'Verifique o Wi-Fi ou os dados móveis.');
+    return;
+  }
+  const ult = ok[ok.length - 1];
+  let soma = 0;
+  for(let i = 1; i < ok.length; i++) soma += Math.abs(ok[i] - ok[i-1]);
+  const jit = ok.length > 1 ? Math.round(soma / (ok.length - 1)) : 0;
+  $('ping').textContent = ult + ' ms';
+  $('jit').textContent = 'Oscilação: ' + jit + ' ms | Perda: ' + perda + '%';
+  if(ult > 150 || jit > 40 || perda >= 10){
+    mostrar('ruim', 'Ruim para jogar', 'Troque dados móveis por Wi-Fi 5GHz, chegue perto do roteador e feche downloads e vídeos em segundo plano.');
+  }else if(ult > 80 || jit > 20 || perda > 0){
+    mostrar('med', 'Dá para jogar, mas pode travar', 'Evite downloads e atualizações em segundo plano.');
+  }else{
+    mostrar('ok', 'Boa para jogar', 'Conexão estável.');
+  }
+}
+
+function mostrar(classe, texto, dica){
+  const s = $('status');
+  s.className = classe;
+  s.textContent = texto;
+  $('dica').textContent = dica;
+  if(classe === 'ruim' && ultimoEstado !== 'ruim' && navigator.vibrate) navigator.vibrate(300);
+  ultimoEstado = classe;
+}
+
+function alternar(){
+  if(timer){
+    clearInterval(timer);
+    timer = null;
+    $('btn').textContent = 'Iniciar monitor';
+    $('status').className = '';
+    $('status').textContent = 'Parado';
+    $('dica').textContent = '';
+  }else{
+    res = [];
+    medirPing();
+    timer = setInterval(medirPing, 2000);
+    $('btn').textContent = 'Parar monitor';
+    medirHz();
+    rede();
+  }
+}
+
+async function testarVel(){
+  $('vel').textContent = 'testando...';
+  try{
+    const t0 = performance.now();
+    const r = await fetch('https://speed.cloudflare.com/__down?bytes=5000000&r=' + Date.now(), {cache:'no-store'});
+    const b = await r.arrayBuffer();
+    const seg = (performance.now() - t0) / 1000;
+    const mbps = (b.byteLength * 8 / 1000000) / seg;
+    $('vel').textContent = mbps.toFixed(1) + ' Mbps';
+  }catch(e){
+    $('vel').textContent = 'erro no teste';
+  }
+}
+
+function medirHz(){
+  const d = [];
+  let ant = null;
+  let n = 0;
+  function f(t){
+    if(ant !== null) d.push(t - ant);
+    ant = t;
+    n++;
+    if(n < 90){
+      requestAnimationFrame(f);
+    }else{
+      d.sort((a, b) => a - b);
+      const hz = 1000 / d[Math.floor(d.length / 2)];
+      const op = [30, 48, 60, 72, 90, 120, 144, 165];
+      let m = op[0];
+      for(const o of op){ if(Math.abs(o - hz) < Math.abs(m - hz)) m = o; }
+      $('hz').textContent = m + ' Hz';
+    }
+  }
+  requestAnimationFrame(f);
+}
+
+function rede(){
+  const c = navigator.connection;
+  if(c){
+    $('net').textContent = (c.type || 'tipo desconhecido') + ' | ' + (c.effectiveType || '?') + ' | ' + (c.downlink || '?') + ' Mbps estimados';
+  }else{
+    $('net').textContent = navigator.onLine ? 'Online' : 'Offline';
+  }
+}
+
+medirHz();
+rede();
 </script>
 </body>
 </html>
