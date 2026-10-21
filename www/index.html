@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meu App</title>
+<style>
+body{font-family:sans-serif;margin:0;padding:20px;background:#111;color:#eee}
+input{width:65%;padding:10px;border-radius:8px;border:0}
+button{padding:10px 14px;border:0;border-radius:8px;background:#4caf50;color:#fff}
+ul{list-style:none;padding:0}
+li{padding:10px 0;border-bottom:1px solid #333}
+</style>
+</head>
+<body>
+<h1>Minhas tarefas</h1>
+<input id="t" placeholder="Nova tarefa">
+<button onclick="add()">Add</button>
+<ul id="l"></ul>
+<script>
+let tarefas = JSON.parse(localStorage.getItem('t') || '[]');
+function salvar(){ localStorage.setItem('t', JSON.stringify(tarefas)); mostrar(); }
+function add(){ const i = document.getElementById('t'); if(i.value.trim()){ tarefas.push(i.value.trim()); i.value=''; salvar(); } }
+function del(n){ tarefas.splice(n,1); salvar(); }
+function mostrar(){ document.getElementById('l').innerHTML = tarefas.map((x,n)=>'<li>'+x+' <button onclick="del('+n+')">x</button></li>').join(''); }
+mostrar();
+</script>
+</body>
+</html>
